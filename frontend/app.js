@@ -60,10 +60,10 @@ async function refreshAll() {
 
 function renderList() {
   if (state.emails.length === 0) {
-    el.list.innerHTML = '<p class="empty">No emails.</p>';
+    setMarkup(el.list, '<p class="empty">No emails.</p>');
     return;
   }
-  el.list.innerHTML = "";
+  el.list.replaceChildren();
   for (const entry of state.emails) {
     const { email, analysis, status } = entry;
     const card = document.createElement("button");
@@ -76,16 +76,16 @@ function renderList() {
       renderList();
       renderDetail();
     };
-    const badges = [`<span class="badge status-${status}">${status.replace(/_/g, " ")}</span>`];
+    const badges = [`<span class="badge status-${escapeAttribute(status)}">${escapeHtml(status.replace(/_/g, " "))}</span>`];
     if (analysis) {
-      badges.push(`<span class="badge">${analysis.category.replace(/_/g, " ")}</span>`);
+      badges.push(`<span class="badge">${escapeHtml(analysis.category.replace(/_/g, " "))}</span>`);
     }
-    card.innerHTML = `
+    setMarkup(card, `
       <div class="row1"><span>${escapeHtml(email.from)}</span></div>
       <div class="from">${escapeHtml(email.received_at)}</div>
       <div class="subject">${escapeHtml(email.subject)}</div>
       <div class="badges">${badges.join("")}</div>
-    `;
+    `);
     el.list.appendChild(card);
   }
 }
@@ -100,7 +100,7 @@ function renderDetail() {
   }
   const entry = state.emails.find((e) => e.email.id === state.selectedId);
   if (!entry) {
-    el.detail.innerHTML = '<p class="empty">Select an email to see the agent\'s reasoning.</p>';
+    setMarkup(el.detail, '<p class="empty">Select an email to see the agent\'s reasoning.</p>');
     return;
   }
   const { email, analysis, policy, status } = entry;
@@ -152,17 +152,17 @@ function renderDetail() {
     let buttons =
       status === "draft_ready" || status === "needs_review"
         ? `<div class="action-buttons">
-             <button class="btn approve" onclick="approveEmail('${escapeAttribute(email.id)}')">Approve</button>
-             <button class="btn reject" onclick="rejectEmail('${escapeAttribute(email.id)}')">Reject</button>
+             <button class="btn approve" data-email-action="approve" data-id="${escapeAttribute(email.id)}">Approve</button>
+             <button class="btn reject" data-email-action="reject" data-id="${escapeAttribute(email.id)}">Reject</button>
            </div>`
         : "";
     if (["auto_executed", "auto_archived", "approved"].includes(status) && entry.action_id) {
-      buttons = `<div class="action-buttons"><button class="btn undo" onclick="undoEmail('${escapeAttribute(email.id)}')">Undo action</button></div>`;
+      buttons = `<div class="action-buttons"><button class="btn undo" data-email-action="undo" data-id="${escapeAttribute(email.id)}">Undo action</button></div>`;
     }
 
     actionHtml = `
       <div class="action-box">
-        <h3>Proposed action &middot; ${status.replace(/_/g, " ")}</h3>
+        <h3>Proposed action &middot; ${escapeHtml(status.replace(/_/g, " "))}</h3>
         <div class="action-detail">${escapeHtml(actionDetail)}</div>
         ${buttons}
       </div>
@@ -171,7 +171,7 @@ function renderDetail() {
     reasoningHtml = '<p class="empty">Not yet analyzed. Click "Run Agent".</p>';
   }
 
-  el.detail.innerHTML = `
+  setMarkup(el.detail, `
     <div class="detail-header">
       <div>
         <h2>${escapeHtml(email.subject)}</h2>
@@ -182,7 +182,7 @@ function renderDetail() {
     ${reasoningHtml}
     ${policyHtml}
     ${actionHtml}
-  `;
+  `);
 }
 
 function renderPlayground() {
@@ -194,7 +194,7 @@ function renderPlayground() {
     <div class="rule-pills">${result.rules_triggered.map((rule) => `<span>${escapeHtml(rule.rule.replace(/_/g, " "))}</span>`).join("") || "<span>POLICY PASSED</span>"}</div>
     <p>State: ${escapeHtml(result.state)}. ${result.verdict === "REVIEW" ? "Open Review Queue to approve or reject." : result.verdict === "ALLOW" ? "Open Review Queue to create a local artifact." : "Execution is denied."}</p>
   </article>` : "";
-  el.detail.innerHTML = `<div class="lab-hero"><div><span class="eyebrow">USER-CONTROLLED ADVERSARIAL TEST</span><h2>Live tool-call playground</h2></div></div>
+  setMarkup(el.detail, `<div class="lab-hero"><div><span class="eyebrow">USER-CONTROLLED ADVERSARIAL TEST</span><h2>Live tool-call playground</h2></div></div>
     <p class="lab-copy">Edit an agent proposal and evaluate it against the active policy. This is a real API decision, not a prerecorded result. No external email, transfer, or message is sent.</p>
     <div class="scenario-buttons"><button class="btn small" type="button" data-scenario="safe">Safe task</button><button class="btn small" type="button" data-scenario="injection">Injection attack</button><button class="btn small" type="button" data-scenario="payment">Payment attempt</button><button class="btn small" type="button" data-scenario="customer">Customer reply</button></div>
     <form id="playground-form" class="playground-form">
@@ -208,7 +208,7 @@ function renderPlayground() {
       <label>Data class<select name="data_classification"><option>public</option><option>customer_private</option><option>financial</option><option>payroll</option><option>secret</option></select></label>
       <label class="checkbox wide"><input name="reversible" type="checkbox" checked> Agent claims action is reversible</label>
       <button class="btn primary" type="submit">Evaluate proposed call</button>
-    </form><div id="playground-result">${resultHtml}</div>`;
+    </form><div id="playground-result">${resultHtml}</div>`);
   const form = document.getElementById("playground-form");
   if (state.playgroundDraft) {
     for (const [key, value] of Object.entries(state.playgroundDraft)) {
@@ -259,9 +259,9 @@ function renderReviewQueue() {
     const d = record.decision;
     const id = escapeAttribute(record.decision_id);
     let buttons = "";
-    if (record.state === "pending_review") buttons = `<button class="btn approve" onclick="decisionAction('${id}', 'approve')">Approve</button><button class="btn reject" onclick="decisionAction('${id}', 'reject')">Reject</button>`;
-    if ((record.state === "approved" || record.state === "allowed") && ["create_task", "create_calendar_event", "archive_email", "send_email", "send_message"].includes(record.request.tool)) buttons = `<button class="btn approve" onclick="decisionAction('${id}', 'execute')">Create local artifact</button>`;
-    if (record.state === "executed" && record.request.reversible && ["create_task", "create_calendar_event", "archive_email"].includes(record.request.tool)) buttons = `<button class="btn undo" onclick="decisionAction('${id}', 'undo')">Undo</button>`;
+    if (record.state === "pending_review") buttons = `<button class="btn approve" data-decision-action="approve" data-id="${id}">Approve</button><button class="btn reject" data-decision-action="reject" data-id="${id}">Reject</button>`;
+    if ((record.state === "approved" || record.state === "allowed") && ["create_task", "create_calendar_event", "archive_email", "send_email", "send_message"].includes(record.request.tool)) buttons = `<button class="btn approve" data-decision-action="execute" data-id="${id}">Create local artifact</button>`;
+    if (record.state === "executed" && record.request.reversible && ["create_task", "create_calendar_event", "archive_email"].includes(record.request.tool)) buttons = `<button class="btn undo" data-decision-action="undo" data-id="${id}">Undo</button>`;
     return `<article class="attack-card verdict-${d.verdict.toLowerCase()}">
       <div class="attack-heading"><div><strong>${escapeHtml(record.request.agent)} → ${escapeHtml(record.request.tool)}</strong><small>${escapeHtml(record.request.source)} · ${escapeHtml(record.created_at)}</small></div><span>${escapeHtml(record.state.replace(/_/g, " ").toUpperCase())}</span></div>
       <p>${escapeHtml(d.explanation)}</p><div class="rule-pills">${d.rules_triggered.map((r) => `<span>${escapeHtml(r.rule.replace(/_/g, " "))}</span>`).join("") || "<span>POLICY PASSED</span>"}</div>
@@ -269,18 +269,18 @@ function renderReviewQueue() {
       <div class="action-buttons review-actions">${buttons}</div>
     </article>`;
   };
-  el.detail.innerHTML = `<div class="lab-hero"><div><span class="eyebrow">HUMAN-IN-THE-LOOP CONTROL</span><h2>Authorization queue</h2></div><div class="lab-score">${pending.length}<small>awaiting review</small></div></div>
+  setMarkup(el.detail, `<div class="lab-hero"><div><span class="eyebrow">HUMAN-IN-THE-LOOP CONTROL</span><h2>Authorization queue</h2></div><div class="lab-score">${pending.length}<small>awaiting review</small></div></div>
     <p class="lab-copy">A REVIEW verdict never executes on its own. Approvals expire, blocked calls cannot be approved, and authorized calls create local artifacts without external delivery.</p>
     <h3 class="section-title">Pending</h3><div class="attack-grid">${pending.map(card).join("") || '<p class="empty">No pending decisions. Run the Red-Team Demo to create one.</p>'}</div>
-    <h3 class="section-title">Recent decisions</h3><div class="attack-grid">${recent.map(card).join("") || '<p class="empty">No decisions yet.</p>'}</div>`;
+    <h3 class="section-title">Recent decisions</h3><div class="attack-grid">${recent.map(card).join("") || '<p class="empty">No decisions yet.</p>'}</div>`);
 }
 
 function renderAudit() {
   const { verification, entries } = state.audit;
-  el.detail.innerHTML = `<div class="lab-hero"><div><span class="eyebrow">TAMPER-EVIDENT LOCAL LEDGER</span><h2>Audit proof</h2></div><div class="lab-score">${verification.valid ? "VALID" : "BROKEN"}<small>${verification.entries} events</small></div></div>
+  setMarkup(el.detail, `<div class="lab-hero"><div><span class="eyebrow">TAMPER-EVIDENT LOCAL LEDGER</span><h2>Audit proof</h2></div><div class="lab-score">${verification.valid ? "VALID" : "BROKEN"}<small>${verification.entries} events</small></div></div>
     <p class="lab-copy">Each event hashes the previous event. Verification detects changes to stored rows; production-grade independent proof would also anchor the head hash outside this database.</p>
     <div class="chain-proof">Head hash · ${escapeHtml(verification.head)}</div>
-    <div class="audit-events">${entries.slice().reverse().map((entry) => `<article class="audit-event"><strong>${escapeHtml(entry.event_type)}</strong><span>${escapeHtml(entry.timestamp)}</span><p>${escapeHtml(entry.message)}</p><small>${escapeHtml(entry.hash)}</small></article>`).join("") || '<p class="empty">No events yet.</p>'}</div>`;
+    <div class="audit-events">${entries.slice().reverse().map((entry) => `<article class="audit-event"><strong>${escapeHtml(entry.event_type)}</strong><span>${escapeHtml(entry.timestamp)}</span><p>${escapeHtml(entry.message)}</p><small>${escapeHtml(entry.hash)}</small></article>`).join("") || '<p class="empty">No events yet.</p>'}</div>`);
 }
 
 function renderRedTeam() {
@@ -301,7 +301,7 @@ function renderRedTeam() {
     )
     .join("");
 
-  el.detail.innerHTML = `
+  setMarkup(el.detail, `
     <div class="lab-hero">
       <div><span class="eyebrow">LIVE ADVERSARIAL EVALUATION</span><h2>Agent Firewall Attack Lab</h2></div>
       <div class="lab-score">${summary.blocked + summary.review}<small>unsafe calls stopped</small></div>
@@ -315,22 +315,65 @@ function renderRedTeam() {
     </div>
     <div class="attack-grid">${cards}</div>
     <div class="chain-proof">Audit proof · ${audit.entries} hash-linked events · head ${escapeHtml(audit.head.slice(0, 16))}…</div>
-  `;
+  `);
 }
 
 function renderLog(log) {
-  el.log.innerHTML = log.map((line) => `<div>${escapeHtml(line)}</div>`).join("");
+  setMarkup(el.log, log.map((line) => `<div>${escapeHtml(line)}</div>`).join(""));
   el.log.scrollTop = el.log.scrollHeight;
 }
 
+// Parse presentation markup in an inert document, then copy only approved
+// elements and attributes into the live DOM. API and model text is escaped
+// before interpolation; this is a second guard against future regressions.
+function setMarkup(target, markup) {
+  const allowedTags = new Set([
+    "article", "button", "div", "form", "h2", "h3", "input", "label",
+    "li", "option", "p", "select", "small", "span", "strong", "textarea", "ul",
+  ]);
+  const allowedAttributes = new Set([
+    "class", "id", "type", "name", "value", "placeholder", "min", "max",
+    "step", "rows", "required", "checked", "title", "data-id",
+    "data-email-action", "data-decision-action", "data-scenario",
+  ]);
+  const parsed = new DOMParser().parseFromString(`<main>${markup}</main>`, "text/html");
+  const fragment = document.createDocumentFragment();
+
+  function copySafe(node) {
+    if (node.nodeType === Node.TEXT_NODE) return document.createTextNode(node.textContent);
+    if (node.nodeType !== Node.ELEMENT_NODE) return null;
+    const tag = node.tagName.toLowerCase();
+    if (!allowedTags.has(tag)) return null;
+    const copy = document.createElement(tag);
+    for (const { name, value } of node.attributes) {
+      if (allowedAttributes.has(name)) copy.setAttribute(name, value);
+      if (name === "style") {
+        const match = /^width:\s*(\d+(?:\.\d+)?)%\s*;?$/.exec(value);
+        if (match && Number(match[1]) <= 100) copy.style.width = `${match[1]}%`;
+      }
+    }
+    for (const child of node.childNodes) {
+      const safeChild = copySafe(child);
+      if (safeChild) copy.appendChild(safeChild);
+    }
+    return copy;
+  }
+
+  for (const child of parsed.body.firstElementChild.childNodes) {
+    const safeChild = copySafe(child);
+    if (safeChild) fragment.appendChild(safeChild);
+  }
+  target.replaceChildren(fragment);
+}
+
 function escapeHtml(str) {
-  const div = document.createElement("div");
-  div.textContent = str ?? "";
-  return div.innerHTML;
+  return String(str ?? "").replace(/[&<>"']/g, (char) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+  })[char]);
 }
 
 function escapeAttribute(str) {
-  return String(str ?? "").replace(/['\\]/g, "");
+  return escapeHtml(str);
 }
 
 async function approveEmail(id) {
@@ -369,6 +412,16 @@ async function decisionAction(id, action) {
     alert("Decision failed: " + err.message);
   }
 }
+
+el.detail.addEventListener("click", (event) => {
+  const button = event.target.closest("button[data-email-action], button[data-decision-action]");
+  if (!button || !el.detail.contains(button)) return;
+  const id = button.dataset.id;
+  if (button.dataset.emailAction === "approve") approveEmail(id);
+  else if (button.dataset.emailAction === "reject") rejectEmail(id);
+  else if (button.dataset.emailAction === "undo") undoEmail(id);
+  else if (button.dataset.decisionAction) decisionAction(id, button.dataset.decisionAction);
+});
 
 el.btnReview.onclick = () => { state.view = "review"; renderDetail(); };
 el.btnAudit.onclick = () => { state.view = "audit"; renderDetail(); };
@@ -417,5 +470,5 @@ el.btnReset.onclick = async () => {
 };
 
 refreshAll().catch((err) => {
-  el.detail.innerHTML = `<p class="error">Could not load the application: ${escapeHtml(err.message)}</p>`;
+  setMarkup(el.detail, `<p class="error">Could not load the application: ${escapeHtml(err.message)}</p>`);
 });
