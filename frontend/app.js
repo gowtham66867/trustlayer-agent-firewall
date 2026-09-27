@@ -348,7 +348,7 @@ function setMarkup(target, markup) {
     for (const { name, value } of node.attributes) {
       if (allowedAttributes.has(name)) copy.setAttribute(name, value);
       if (name === "style") {
-        const match = /^width:\s*(\d+(?:\.\d+)?)%\s*;?$/.exec(value);
+        const match = value.match(/^width:\s*(\d+(?:\.\d+)?)%\s*;?$/);
         if (match && Number(match[1]) <= 100) copy.style.width = `${match[1]}%`;
       }
     }
