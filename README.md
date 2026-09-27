@@ -1,5 +1,7 @@
 # Inbox Zero Agent — TrustLayer
 
+[![Quality](https://github.com/gowtham66867/agenthon-inbox-agent/actions/workflows/quality.yml/badge.svg)](https://github.com/gowtham66867/agenthon-inbox-agent/actions/workflows/quality.yml)
+
 > An autonomous inbox agent that proves why an action is safe before it acts.
 
 Inbox Zero Agent triages email, proposes replies, tasks, or calendar events, and routes risky decisions to a human. Its defining feature is **guarded autonomy**: model output is treated as an untrusted proposal and must pass an independent, deterministic safety gate before any action can execute.
