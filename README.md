@@ -1,6 +1,6 @@
 # TrustLayer Agent Firewall
 
-[![Quality](https://github.com/gowtham66867/agenthon-inbox-agent/actions/workflows/quality.yml/badge.svg)](https://github.com/gowtham66867/agenthon-inbox-agent/actions/workflows/quality.yml)
+[![Quality](https://github.com/gowtham66867/trustlayer-agent-firewall/actions/workflows/quality.yml/badge.svg)](https://github.com/gowtham66867/trustlayer-agent-firewall/actions/workflows/quality.yml)
 
 > Runtime authorization, adversarial protection, and tamper-evident auditing for autonomous AI agents.
 
@@ -49,7 +49,7 @@ The firewall blocks two calls, routes one for human review, safely allows one, a
 ## Judge demo — 60 seconds
 
 ```bash
-git clone https://github.com/gowtham66867/agenthon-inbox-agent.git
+git clone https://github.com/gowtham66867/trustlayer-agent-firewall.git
 cd agenthon-inbox-agent
 python -m venv .venv
 source .venv/bin/activate          # Windows: .venv\Scripts\activate
