@@ -83,3 +83,14 @@ def test_unknown_email_ids_return_404():
     assert client.post("/api/emails/missing/approve").status_code == 404
     assert client.post("/api/emails/missing/reject").status_code == 404
     assert client.post("/api/emails/missing/undo").status_code == 404
+
+
+def test_red_team_endpoint_blocks_attacks_and_proves_audit_chain():
+    response = client.post("/api/red-team")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["summary"] == {"total": 4, "blocked": 2, "review": 1, "allowed": 1}
+    assert payload["audit"]["valid"] is True
+    metrics = client.get("/api/firewall/metrics").json()
+    assert metrics["decisions"] == 4
+    assert metrics["blocked"] == 2

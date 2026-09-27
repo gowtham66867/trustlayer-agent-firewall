@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import os
 import threading
 from pathlib import Path
@@ -10,7 +12,9 @@ from fastapi.staticfiles import StaticFiles
 load_dotenv(Path(__file__).parent / ".env")
 
 from agent import analyze_email  # noqa: E402
+from audit import LEDGER  # noqa: E402
 from data import SEED_EMAILS  # noqa: E402
+from firewall import ToolCallRequest, evaluate_tool_call, red_team_cases  # noqa: E402
 from policy import assess_policy  # noqa: E402
 
 app = FastAPI(title="Inbox Zero Agent")
@@ -24,11 +28,13 @@ TASKS = []
 EVENTS = []
 LOG = []
 ACTIONS = []
+FIREWALL_DECISIONS = []
 RUN_LOCK = threading.Lock()
 
 
-def log_event(message: str):
+def log_event(message: str, event_type: str = "workflow", metadata: dict | None = None):
     LOG.append(message)
+    LEDGER.append(event_type, message, metadata)
 
 
 def execute_reversible_action(email_id: str, analysis: dict, actor: str = "agent"):
@@ -180,6 +186,57 @@ def get_actions():
     return ACTIONS
 
 
+@app.post("/api/firewall/evaluate")
+def evaluate_firewall(request: ToolCallRequest):
+    decision = evaluate_tool_call(request)
+    FIREWALL_DECISIONS.append(decision)
+    log_event(
+        f"[firewall] {decision['agent']} -> {decision['tool']} = {decision['verdict']} "
+        f"(risk {decision['risk_score']})",
+        "firewall_decision",
+        {"decision_id": decision["decision_id"], "verdict": decision["verdict"]},
+    )
+    return decision
+
+
+@app.post("/api/red-team")
+def run_red_team():
+    results = []
+    for case in red_team_cases():
+        decision = evaluate_tool_call(case)
+        FIREWALL_DECISIONS.append(decision)
+        results.append(decision)
+        log_event(
+            f"[red-team] {case.agent} attempted {case.tool} -> {decision['verdict']} "
+            f"(risk {decision['risk_score']})",
+            "red_team_decision",
+            {"decision_id": decision["decision_id"], "verdict": decision["verdict"]},
+        )
+    summary = {
+        "total": len(results),
+        "blocked": sum(item["verdict"] == "BLOCK" for item in results),
+        "review": sum(item["verdict"] == "REVIEW" for item in results),
+        "allowed": sum(item["verdict"] == "ALLOW" for item in results),
+    }
+    return {"summary": summary, "results": results, "audit": LEDGER.verify()}
+
+
+@app.get("/api/firewall/metrics")
+def firewall_metrics():
+    return {
+        "decisions": len(FIREWALL_DECISIONS),
+        "blocked": sum(item["verdict"] == "BLOCK" for item in FIREWALL_DECISIONS),
+        "review": sum(item["verdict"] == "REVIEW" for item in FIREWALL_DECISIONS),
+        "allowed": sum(item["verdict"] == "ALLOW" for item in FIREWALL_DECISIONS),
+        "audit": LEDGER.verify(),
+    }
+
+
+@app.get("/api/audit")
+def get_audit():
+    return {"verification": LEDGER.verify(), "entries": LEDGER.entries()}
+
+
 @app.post("/api/emails/{email_id}/undo")
 def undo_email(email_id: str):
     entry = STATE.get(email_id)
@@ -212,6 +269,8 @@ def reset_state():
     EVENTS.clear()
     LOG.clear()
     ACTIONS.clear()
+    FIREWALL_DECISIONS.clear()
+    LEDGER.clear()
     return {"ok": True}
 
 

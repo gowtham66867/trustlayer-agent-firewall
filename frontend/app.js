@@ -1,6 +1,7 @@
 const state = {
   emails: [],
   selectedId: null,
+  redTeam: null,
 };
 
 const el = {
@@ -9,9 +10,11 @@ const el = {
   log: document.getElementById("log-feed"),
   btnRun: document.getElementById("btn-run"),
   btnReset: document.getElementById("btn-reset"),
+  btnAttack: document.getElementById("btn-attack"),
   statTasks: document.getElementById("stat-tasks"),
   statEvents: document.getElementById("stat-events"),
   statPending: document.getElementById("stat-pending"),
+  statBlocked: document.getElementById("stat-blocked"),
 };
 
 async function fetchJSON(url, opts) {
@@ -24,11 +27,12 @@ async function fetchJSON(url, opts) {
 }
 
 async function refreshAll() {
-  const [emails, tasks, events, log] = await Promise.all([
+  const [emails, tasks, events, log, firewall] = await Promise.all([
     fetchJSON("/api/emails"),
     fetchJSON("/api/tasks"),
     fetchJSON("/api/events"),
     fetchJSON("/api/log"),
+    fetchJSON("/api/firewall/metrics"),
   ]);
   state.emails = emails;
   el.statTasks.textContent = tasks.length;
@@ -36,6 +40,7 @@ async function refreshAll() {
   el.statPending.textContent = emails.filter(
     (e) => e.status === "needs_review" || e.status === "draft_ready"
   ).length;
+  el.statBlocked.textContent = firewall.blocked;
   renderList();
   renderDetail();
   renderLog(log);
@@ -54,6 +59,7 @@ function renderList() {
     card.className = "email-card" + (state.selectedId === email.id ? " selected" : "");
     card.onclick = () => {
       state.selectedId = email.id;
+      state.redTeam = null;
       renderList();
       renderDetail();
     };
@@ -72,6 +78,10 @@ function renderList() {
 }
 
 function renderDetail() {
+  if (state.redTeam) {
+    renderRedTeam();
+    return;
+  }
   const entry = state.emails.find((e) => e.email.id === state.selectedId);
   if (!entry) {
     el.detail.innerHTML = '<p class="empty">Select an email to see the agent\'s reasoning.</p>';
@@ -159,6 +169,41 @@ function renderDetail() {
   `;
 }
 
+function renderRedTeam() {
+  const { summary, results, audit } = state.redTeam;
+  const cards = results
+    .map(
+      (result) => `<article class="attack-card verdict-${result.verdict.toLowerCase()}">
+        <div class="attack-heading">
+          <div><strong>${escapeHtml(result.agent)}</strong><small>${escapeHtml(result.tool)}</small></div>
+          <span>${escapeHtml(result.verdict)}</span>
+        </div>
+        <div class="risk-meter"><div style="width:${result.risk_score}%"></div></div>
+        <p>Risk score ${result.risk_score}/100 · ${escapeHtml(result.explanation)}</p>
+        <div class="rule-pills">${result.rules_triggered
+          .map((rule) => `<span title="${escapeHtml(rule.detail)}">${escapeHtml(rule.rule.replace(/_/g, " "))}</span>`)
+          .join("") || "<span>NO RISK RULES</span>"}</div>
+      </article>`
+    )
+    .join("");
+
+  el.detail.innerHTML = `
+    <div class="lab-hero">
+      <div><span class="eyebrow">LIVE ADVERSARIAL EVALUATION</span><h2>Agent Firewall Attack Lab</h2></div>
+      <div class="lab-score">${summary.blocked + summary.review}<small>unsafe calls stopped</small></div>
+    </div>
+    <p class="lab-copy">Four agents attempted real-world tool calls. TrustLayer evaluated the content, tool, reversibility, and confidence before any side effect could occur.</p>
+    <div class="lab-summary">
+      <div><strong>${summary.blocked}</strong><span>blocked</span></div>
+      <div><strong>${summary.review}</strong><span>needs review</span></div>
+      <div><strong>${summary.allowed}</strong><span>safely allowed</span></div>
+      <div><strong>${audit.valid ? "VALID" : "BROKEN"}</strong><span>audit chain</span></div>
+    </div>
+    <div class="attack-grid">${cards}</div>
+    <div class="chain-proof">Audit proof · ${audit.entries} hash-linked events · head ${escapeHtml(audit.head.slice(0, 16))}…</div>
+  `;
+}
+
 function renderLog(log) {
   el.log.innerHTML = log.map((line) => `<div>${escapeHtml(line)}</div>`).join("");
   el.log.scrollTop = el.log.scrollHeight;
@@ -209,10 +254,26 @@ el.btnRun.onclick = async () => {
   }
 };
 
+el.btnAttack.onclick = async () => {
+  el.btnAttack.disabled = true;
+  el.btnAttack.textContent = "Attacking...";
+  try {
+    state.redTeam = await fetchJSON("/api/red-team", { method: "POST" });
+    state.selectedId = null;
+    await refreshAll();
+  } catch (err) {
+    alert("Red-team run failed: " + err.message);
+  } finally {
+    el.btnAttack.disabled = false;
+    el.btnAttack.textContent = "Red-Team Demo";
+  }
+};
+
 el.btnReset.onclick = async () => {
   try {
     await fetchJSON("/api/reset", { method: "POST" });
     state.selectedId = null;
+    state.redTeam = null;
     await refreshAll();
   } catch (err) {
     alert("Reset failed: " + err.message);

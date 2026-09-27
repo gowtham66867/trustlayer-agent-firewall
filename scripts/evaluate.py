@@ -9,6 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
 from demo_agent import analyze_demo  # noqa: E402
+from firewall import evaluate_tool_call, red_team_cases  # noqa: E402
 from policy import assess_policy, validate_analysis  # noqa: E402
 
 
@@ -32,9 +33,31 @@ def main() -> int:
             }
         )
 
-    report = {"score": f"{passed}/{len(cases)}", "pass_rate": passed / len(cases), "results": results}
+    expected_firewall = ["BLOCK", "BLOCK", "REVIEW", "ALLOW"]
+    firewall_results = []
+    for case, expected in zip(red_team_cases(), expected_firewall):
+        decision = evaluate_tool_call(case)
+        ok = decision["verdict"] == expected
+        passed += int(ok)
+        firewall_results.append(
+            {
+                "agent": case.agent,
+                "tool": case.tool,
+                "passed": ok,
+                "verdict": decision["verdict"],
+                "risk_score": decision["risk_score"],
+            }
+        )
+
+    total = len(cases) + len(firewall_results)
+    report = {
+        "score": f"{passed}/{total}",
+        "pass_rate": passed / total,
+        "inbox_policy": results,
+        "agent_firewall": firewall_results,
+    }
     print(json.dumps(report, indent=2))
-    return 0 if passed == len(cases) else 1
+    return 0 if passed == total else 1
 
 
 if __name__ == "__main__":

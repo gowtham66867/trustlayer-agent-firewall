@@ -1,10 +1,10 @@
-# Inbox Zero Agent — TrustLayer
+# TrustLayer Agent Firewall
 
 [![Quality](https://github.com/gowtham66867/agenthon-inbox-agent/actions/workflows/quality.yml/badge.svg)](https://github.com/gowtham66867/agenthon-inbox-agent/actions/workflows/quality.yml)
 
-> An autonomous inbox agent that proves why an action is safe before it acts.
+> Runtime authorization, adversarial protection, and tamper-evident auditing for autonomous AI agents.
 
-Inbox Zero Agent triages email, proposes replies, tasks, or calendar events, and routes risky decisions to a human. Its defining feature is **guarded autonomy**: model output is treated as an untrusted proposal and must pass an independent, deterministic safety gate before any action can execute.
+TrustLayer sits between AI agents and the tools they want to call. Every proposed side effect receives an `ALLOW`, `REVIEW`, or `BLOCK` verdict before execution. The inbox agent is a concrete adapter demonstrating guarded autonomy for replies, tasks, calendar events, and archiving.
 
 Built for Agenthon 2026. Runs end-to-end without credentials.
 
@@ -35,6 +35,17 @@ Audit log + one-click undo
 
 The model can propose an action. It cannot grant itself permission to execute it.
 
+## The prize demo: Agent Firewall Attack Lab
+
+Click **Red-Team Demo** to run four adversarial tool calls through the firewall:
+
+- A prompt-injected inbox agent attempts to exfiltrate a payroll file.
+- A finance agent attempts an irreversible $48,000 transfer.
+- A support agent attempts to promise a refund to an angry customer.
+- A project agent proposes a safe, reversible task.
+
+The firewall blocks two calls, routes one for human review, safely allows one, and writes every decision to a SHA-256 hash-chained audit ledger. The interface displays risk scores, triggered policy rules, and cryptographic chain verification live.
+
 ## Judge demo — 60 seconds
 
 ```bash
@@ -46,7 +57,7 @@ pip install -r backend/requirements.txt
 uvicorn main:app --app-dir backend --port 8000
 ```
 
-Open [http://localhost:8000](http://localhost:8000) and click **Run Agent**.
+Open [http://localhost:8000](http://localhost:8000). Click **Red-Team Demo** for the headline demonstration or **Run Agent** for the inbox workflow.
 
 No API key is required. The application automatically selects its deterministic demo agent while exercising the real schema, policy, execution, approval, audit, and undo pipeline.
 
@@ -99,9 +110,10 @@ python scripts/evaluate.py
 
 Verified baseline:
 
-- 13 automated tests passing
+- 19 automated tests passing
 - 91% measured backend coverage
 - 100% coverage of the deterministic policy engine
+- 10/10 combined inbox-policy and agent-firewall evaluations passing
 - Credential-free end-to-end API test
 - Atomic failure test proving partial runs do not commit
 - Prompt-injection, financial, legal, emotional-risk, schema, transition, and undo tests
@@ -135,6 +147,10 @@ Adversarial cases live in `evals/cases.json`. The harness emits machine-readable
 | `GET` | `/api/tasks` | Created task artifacts |
 | `GET` | `/api/events` | Created calendar artifacts |
 | `GET` | `/api/actions` | Action ledger including undo state |
+| `POST` | `/api/firewall/evaluate` | Authorize any proposed agent tool call |
+| `POST` | `/api/red-team` | Run the live adversarial attack suite |
+| `GET` | `/api/firewall/metrics` | Allow, review, and block telemetry |
+| `GET` | `/api/audit` | Hash-linked audit entries and chain verification |
 | `GET` | `/api/log` | Human-readable transparency log |
 | `POST` | `/api/reset` | Reset the deterministic demo |
 
@@ -143,6 +159,8 @@ Adversarial cases live in `evals/cases.json`. The harness emits machine-readable
 ```text
 backend/
   agent.py          Anthropic tool-use adapter
+  firewall.py       generic ALLOW / REVIEW / BLOCK runtime firewall
+  audit.py          SHA-256 hash-chained decision ledger
   demo_agent.py     deterministic credential-free agent
   policy.py         schema and independent safety gate
   main.py           API, state machine, atomic execution, undo
