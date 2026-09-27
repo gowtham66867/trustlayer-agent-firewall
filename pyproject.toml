@@ -10,7 +10,7 @@ exclude = ["backend/venv"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP"]
-ignore = ["E501"]
+ignore = ["E501", "UP007", "UP045"]
 
 [tool.ruff.format]
 quote-style = "double"

@@ -6,3 +6,6 @@ __pycache__
 .git
 .env
 tests
+*.db
+*.db-shm
+*.db-wal

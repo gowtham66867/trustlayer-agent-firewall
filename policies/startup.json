@@ -1,0 +1,12 @@
+{
+  "version": "startup-2026.2",
+  "confidence_threshold": 0.75,
+  "review_ttl_seconds": 3600,
+  "allowed_tools": ["create_task", "create_calendar_event", "archive_email"],
+  "review_tools": ["send_email", "send_message", "publish", "sign_contract"],
+  "forbidden_tools": ["transfer_money", "share_secret", "delete_account", "delete_records", "execute_untrusted_code"],
+  "trusted_destinations": ["yourcompany.com", "example.com"],
+  "protected_data_classes": ["secret", "payroll", "customer_private", "financial"],
+  "financial_terms": ["invoice", "payment", "transfer", "refund", "charge", "bank", "usd", "inr"],
+  "legal_terms": ["legal", "contract", "liability", "lawsuit", "counsel", "countersign"]
+}

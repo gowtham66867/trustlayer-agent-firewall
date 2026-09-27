@@ -3,10 +3,11 @@ from __future__ import annotations
 import os
 import threading
 from pathlib import Path
+from typing import Optional
 from uuid import uuid4
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, Header, HTTPException
 from fastapi.staticfiles import StaticFiles
 
 load_dotenv(Path(__file__).parent / ".env")
@@ -14,10 +15,12 @@ load_dotenv(Path(__file__).parent / ".env")
 from agent import analyze_email  # noqa: E402
 from audit import LEDGER  # noqa: E402
 from data import SEED_EMAILS  # noqa: E402
-from firewall import ToolCallRequest, evaluate_tool_call, red_team_cases  # noqa: E402
+from firewall import ToolCallRequest, evaluate_tool_call, load_policy, red_team_cases  # noqa: E402
 from policy import assess_policy  # noqa: E402
+from store import STORE  # noqa: E402
 
-app = FastAPI(title="Inbox Zero Agent")
+app = FastAPI(title="TrustLayer Agent Firewall")
+ACTIVE_POLICY = load_policy()
 
 # in-memory state: email_id -> {email, analysis, status}
 STATE = {
@@ -28,7 +31,6 @@ TASKS = []
 EVENTS = []
 LOG = []
 ACTIONS = []
-FIREWALL_DECISIONS = []
 RUN_LOCK = threading.Lock()
 
 
@@ -188,23 +190,31 @@ def get_actions():
 
 @app.post("/api/firewall/evaluate")
 def evaluate_firewall(request: ToolCallRequest):
-    decision = evaluate_tool_call(request)
-    FIREWALL_DECISIONS.append(decision)
+    decision = evaluate_tool_call(request, ACTIVE_POLICY)
+    try:
+        STORE.create(request.model_dump(), decision, ACTIVE_POLICY.review_ttl_seconds)
+    except ValueError as exc:
+        log_event(
+            f"[firewall] replay attempt for {request.agent} -> {request.tool}",
+            "replay_block",
+            {"idempotency_key": request.idempotency_key},
+        )
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     log_event(
         f"[firewall] {decision['agent']} -> {decision['tool']} = {decision['verdict']} "
         f"(risk {decision['risk_score']})",
         "firewall_decision",
         {"decision_id": decision["decision_id"], "verdict": decision["verdict"]},
     )
-    return decision
+    return {**decision, "state": STORE.get(decision["decision_id"])["state"]}
 
 
 @app.post("/api/red-team")
 def run_red_team():
     results = []
     for case in red_team_cases():
-        decision = evaluate_tool_call(case)
-        FIREWALL_DECISIONS.append(decision)
+        decision = evaluate_tool_call(case, ACTIVE_POLICY)
+        STORE.create(case.model_dump(), decision, ACTIVE_POLICY.review_ttl_seconds)
         results.append(decision)
         log_event(
             f"[red-team] {case.agent} attempted {case.tool} -> {decision['verdict']} "
@@ -223,13 +233,157 @@ def run_red_team():
 
 @app.get("/api/firewall/metrics")
 def firewall_metrics():
+    decisions = STORE.list()
     return {
-        "decisions": len(FIREWALL_DECISIONS),
-        "blocked": sum(item["verdict"] == "BLOCK" for item in FIREWALL_DECISIONS),
-        "review": sum(item["verdict"] == "REVIEW" for item in FIREWALL_DECISIONS),
-        "allowed": sum(item["verdict"] == "ALLOW" for item in FIREWALL_DECISIONS),
+        "decisions": len(decisions),
+        "blocked": sum(item["decision"]["verdict"] == "BLOCK" for item in decisions),
+        "review": sum(item["decision"]["verdict"] == "REVIEW" for item in decisions),
+        "allowed": sum(item["decision"]["verdict"] == "ALLOW" for item in decisions),
         "audit": LEDGER.verify(),
     }
+
+
+@app.get("/api/policy")
+def get_policy():
+    return {
+        "preset": os.environ.get("TRUSTLAYER_POLICY", "startup"),
+        **ACTIVE_POLICY.model_dump(mode="json"),
+    }
+
+
+@app.get("/api/firewall/decisions")
+def list_decisions(state: Optional[str] = None):
+    return [public_decision(item) for item in STORE.list(state)]
+
+
+@app.get("/api/firewall/review")
+def review_queue():
+    return [public_decision(item) for item in STORE.list("pending_review")]
+
+
+@app.get("/api/firewall/artifacts")
+def list_firewall_artifacts():
+    """Local artifacts created by authorized tool calls; no external delivery."""
+    return [
+        {
+            "decision_id": item["decision_id"],
+            "state": item["state"],
+            "kind": item["artifact"]["kind"],
+            "external_delivery": False,
+        }
+        for item in STORE.list()
+        if item["artifact"] and item["state"] in {"executed", "undone"}
+    ]
+
+
+def public_decision(record: dict) -> dict:
+    """Expose the decision trace, never stored content or tool parameters."""
+    return {
+        **{key: value for key, value in record.items() if key not in {"request", "artifact"}},
+        "request": {key: record["request"][key] for key in ("agent", "source", "tool", "reversible")},
+        "artifact": {
+            "kind": record["artifact"]["kind"],
+            "external_delivery": False,
+        }
+        if record["artifact"]
+        else None,
+    }
+
+
+def require_review_token(token: str | None) -> None:
+    expected = os.environ.get("TRUSTLAYER_REVIEW_TOKEN")
+    if expected and token != expected:
+        raise HTTPException(status_code=401, detail="Review token required")
+
+
+def get_decision_or_404(decision_id: str) -> dict:
+    record = STORE.get(decision_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Unknown decision id")
+    return record
+
+
+def current_verdict(record: dict) -> str:
+    request = ToolCallRequest.model_validate(record["request"])
+    return evaluate_tool_call(request, ACTIVE_POLICY)["verdict"]
+
+
+@app.post("/api/firewall/decisions/{decision_id}/approve")
+def approve_decision(decision_id: str, x_review_token: Optional[str] = Header(default=None)):
+    require_review_token(x_review_token)
+    record = get_decision_or_404(decision_id)
+    if current_verdict(record) == "BLOCK":
+        raise HTTPException(status_code=409, detail="Current policy blocks this request")
+    try:
+        updated = STORE.transition(decision_id, {"pending_review"}, "approved")
+    except (ValueError, TimeoutError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    log_event(f"[human-approved] {decision_id}", "approval", {"decision_id": decision_id})
+    return public_decision(updated)
+
+
+@app.post("/api/firewall/decisions/{decision_id}/reject")
+def reject_decision(decision_id: str, x_review_token: Optional[str] = Header(default=None)):
+    require_review_token(x_review_token)
+    get_decision_or_404(decision_id)
+    try:
+        updated = STORE.transition(decision_id, {"pending_review", "approved"}, "rejected")
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    log_event(f"[human-rejected] {decision_id}", "rejection", {"decision_id": decision_id})
+    return public_decision(updated)
+
+
+@app.post("/api/firewall/decisions/{decision_id}/execute")
+def execute_decision(decision_id: str):
+    record = get_decision_or_404(decision_id)
+    verdict = current_verdict(record)
+    if verdict == "BLOCK" or (verdict == "REVIEW" and record["state"] != "approved"):
+        raise HTTPException(status_code=409, detail="Current policy does not authorize execution")
+    tool = record["request"]["tool"]
+    parameters = record["request"]["parameters"]
+    artifact_kinds = {
+        "create_task": "local_task",
+        "create_calendar_event": "local_calendar_hold",
+        "archive_email": "local_archive_record",
+        "send_email": "local_email_draft",
+        "send_message": "local_message_draft",
+    }
+    if tool not in artifact_kinds:
+        raise HTTPException(status_code=409, detail="No safe local adapter for this tool")
+    artifact = {
+        "kind": artifact_kinds[tool],
+        "tool": tool,
+        "parameters": parameters,
+        "destination": record["request"].get("destination"),
+        "decision_id": decision_id,
+        "external_delivery": False,
+    }
+    try:
+        updated = STORE.transition(decision_id, {"allowed", "approved"}, "executed", artifact)
+    except (ValueError, TimeoutError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    log_event(
+        f"[local-artifact] {decision_id} -> {artifact['kind']}", "execution", {"decision_id": decision_id}
+    )
+    return public_decision(updated)
+
+
+@app.post("/api/firewall/decisions/{decision_id}/undo")
+def undo_decision(decision_id: str):
+    record = get_decision_or_404(decision_id)
+    if not record["request"]["reversible"] or record["request"]["tool"] not in {
+        "create_task",
+        "create_calendar_event",
+        "archive_email",
+    }:
+        raise HTTPException(status_code=409, detail="Action is not reversible")
+    try:
+        updated = STORE.transition(decision_id, {"executed"}, "undone", record["artifact"])
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    log_event(f"[undo] {decision_id}", "undo", {"decision_id": decision_id})
+    return public_decision(updated)
 
 
 @app.get("/api/audit")
@@ -269,7 +423,7 @@ def reset_state():
     EVENTS.clear()
     LOG.clear()
     ACTIONS.clear()
-    FIREWALL_DECISIONS.clear()
+    STORE.clear()
     LEDGER.clear()
     return {"ok": True}
 

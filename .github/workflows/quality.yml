@@ -14,7 +14,9 @@ jobs:
           python-version: "3.12"
           cache: pip
       - run: pip install -r requirements-dev.txt
-      - run: ruff check backend tests scripts
-      - run: ruff format --check backend tests scripts
+      - run: ruff check backend tests scripts sdk
+      - run: ruff format --check backend tests scripts sdk
       - run: pytest --cov=backend --cov-report=term-missing
       - run: python scripts/evaluate.py
+      - run: node --check frontend/app.js
+      - run: docker build -t trustlayer-agent-firewall:ci .

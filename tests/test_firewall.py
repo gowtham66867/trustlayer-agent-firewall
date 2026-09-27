@@ -39,6 +39,7 @@ def test_irreversible_communication_requires_review():
             source="ticket",
             content="Send the resolution to the customer.",
             tool="send_email",
+            destination="customer@example.com",
             confidence=0.95,
             reversible=False,
         )
