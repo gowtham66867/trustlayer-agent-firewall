@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Inbox Zero Agent</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="dot"></span>
+      <div><h1>Inbox Zero Agent</h1><small>TrustLayer · guarded autonomy</small></div>
+    </div>
+    <div class="stats">
+      <div class="stat"><span id="stat-tasks">0</span> tasks created</div>
+      <div class="stat"><span id="stat-events">0</span> events created</div>
+      <div class="stat"><span id="stat-pending">0</span> pending review</div>
+    </div>
+    <div class="actions">
+      <button id="btn-run" class="btn primary">Run Agent</button>
+      <button id="btn-reset" class="btn ghost">Reset</button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="email-list" id="email-list">
+      <p class="empty">Click "Run Agent" to triage the inbox.</p>
+    </section>
+
+    <section class="email-detail" id="email-detail">
+      <p class="empty">Select an email to see the agent's reasoning.</p>
+    </section>
+
+    <section class="log-panel">
+      <h2>Transparency Log</h2>
+      <div class="log-feed" id="log-feed"></div>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

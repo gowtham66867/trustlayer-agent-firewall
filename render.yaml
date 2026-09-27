@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: inbox-zero-agent
+    runtime: docker
+    plan: free
+    healthCheckPath: /api/health
+    envVars:
+      - key: DEMO_MODE
+        value: "true"
+      - key: CONFIDENCE_THRESHOLD
+        value: "0.75"

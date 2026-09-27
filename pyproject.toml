@@ -1,0 +1,16 @@
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["backend"]
+addopts = "-q --disable-warnings --strict-markers"
+
+[tool.ruff]
+target-version = "py39"
+line-length = 110
+exclude = ["backend/venv"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+ignore = ["E501"]
+
+[tool.ruff.format]
+quote-style = "double"
