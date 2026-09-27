@@ -8,6 +8,8 @@ TrustLayer sits between AI agents and the tools they want to call. Every propose
 
 Built for Agenthon 2026. Runs end-to-end without credentials.
 
+**Live demo:** [trustlayer-agent-firewall.onrender.com](https://trustlayer-agent-firewall.onrender.com) — hosted on Render's free plan in deterministic demo mode. The instance may take about a minute to wake after inactivity; its local demo data is shared and may reset on restart. Do not enter real secrets or personal data.
+
 ## Why it matters
 
 Most inbox agents either stop at summarization or auto-act based on the model's own confidence. That creates a circular trust problem: the system being evaluated also decides whether it is safe.
@@ -59,7 +61,7 @@ pip install -r backend/requirements.txt
 uvicorn main:app --app-dir backend --port 8000
 ```
 
-Open [http://localhost:8000](http://localhost:8000). Click **Red-Team Demo** for the headline demonstration or **Run Agent** for the inbox workflow.
+Open [the live demo](https://trustlayer-agent-firewall.onrender.com) or [http://localhost:8000](http://localhost:8000). Click **Red-Team Demo** for the headline demonstration or **Run Agent** for the inbox workflow.
 
 No API key is required. The application automatically selects its deterministic demo agent while exercising the real schema, policy, execution, approval, audit, and undo pipeline.
 
@@ -228,7 +230,7 @@ docker build -t inbox-zero-agent .
 docker run --rm -p 8000:8000 -e DEMO_MODE=true inbox-zero-agent
 ```
 
-Deploy the container to Render, Railway, Fly.io, or another compatible host. Demo mode needs no secrets.
+The public demo runs this container on Render's $0/month plan with `DEMO_MODE=true`. For another host, deploy the same container with no secrets for demo mode. The free Render instance spins down after inactivity and has no persistent disk.
 
 ## Honest limitations
 
